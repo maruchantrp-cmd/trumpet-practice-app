@@ -1,35 +1,163 @@
-const courses = [
-  { name: "パーソナルコース", progress: 65, level: "中級" },
-  { name: "基礎マスターコース", progress: 40, level: "初級" },
-  { name: "応用コース", progress: 20, level: "初級" },
-  { name: "音楽コース", progress: 85, level: "上級" },
-];
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type Theme = {
+  id: string;
+  name: string;
+  total: number;
+  cleared: number;
+  percent: number;
+};
+
+type Book = {
+  id: string;
+  name: string;
+  author: string;
+  total: number;
+  cleared: number;
+  percent: number;
+  themes: Theme[];
+};
+
+export default function HomePage() {
+  const [books, setBooks] = useState<Book[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/home")
+      .then((res) => res.json())
+      .then(setBooks);
+  }, []);
+
   return (
-    <main className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">🎺 Trumpet Trainer</h1>
+    <div style={{ padding: 24 }}>
+      {/* ===== ヘッダー ===== */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <h1>Home</h1>
 
-      {courses.map((course) => (
-        <div
-          key={course.name}
-          className="p-4 rounded-2xl shadow bg-white"
+        {/* 👇 追加ポイント */}
+        <button
+          onClick={() => router.push("/mybook")}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: "none",
+            background: "#1976d2",
+            color: "#fff",
+            cursor: "pointer",
+          }}
         >
-          <h2 className="text-lg font-semibold">{course.name}</h2>
+          MyBookへ
+        </button>
+      </div>
 
-          <div className="mt-2">
-            <div className="h-3 bg-gray-200 rounded-full">
+      {books.map((book) => (
+        <div
+          key={book.id}
+          style={{
+            border: "1px solid #ccc",
+            borderRadius: 10,
+            padding: 16,
+            marginBottom: 24,
+            background: "#fff",
+          }}
+        >
+          {/* ===== Book情報 ===== */}
+          <h2 style={{ marginBottom: 8 }}>
+            {book.name}
+            {book.author && (
+              <span style={{ fontSize: 14, color: "#666" }}>
+                {" "}
+                / {book.author}
+              </span>
+            )}
+          </h2>
+
+          {/* ===== 全体進捗 ===== */}
+          <ProgressBar percent={book.percent} />
+
+          <p style={{ marginTop: 4, fontSize: 14 }}>
+            {book.cleared} / {book.total}（{book.percent}%）
+          </p>
+
+          {/* ===== テーマ一覧 ===== */}
+          <div style={{ marginTop: 16 }}>
+            {book.themes.map((theme) => (
               <div
-                className="h-3 bg-blue-500 rounded-full"
-                style={{ width: `${course.progress}%` }}
-              />
-            </div>
-            <p className="text-sm mt-1">
-              {course.progress}% / {course.level}
-            </p>
+                key={theme.id}
+                onClick={() =>
+                  router.push(`/exercises?themeId=${theme.id}`)
+                }
+                style={{
+                  marginBottom: 12,
+                  padding: 10,
+                  borderRadius: 6,
+                  background: "#fafafa",
+                  cursor: "pointer",
+                  transition: "0.2s",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#f0f0f0")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "#fafafa")
+                }
+              >
+                <strong>{theme.name}</strong>
+
+                <ProgressBar percent={theme.percent} />
+
+                <p style={{ marginTop: 4, fontSize: 13 }}>
+                  {theme.cleared} / {theme.total}（{theme.percent}%）
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       ))}
-    </main>
+    </div>
+  );
+}
+
+/* ===== プログレスバー ===== */
+function ProgressBar({ percent }: { percent: number }) {
+  const color =
+    percent === 100
+      ? "#4caf50"
+      : percent > 50
+      ? "#8bc34a"
+      : percent > 20
+      ? "#ffc107"
+      : "#f44336";
+
+  return (
+    <div
+      style={{
+        background: "#eee",
+        height: 10,
+        width: "100%",
+        borderRadius: 5,
+        overflow: "hidden",
+        marginTop: 4,
+      }}
+    >
+      <div
+        style={{
+          width: `${percent}%`,
+          height: "100%",
+          background: color,
+          transition: "0.3s",
+        }}
+      />
+    </div>
   );
 }

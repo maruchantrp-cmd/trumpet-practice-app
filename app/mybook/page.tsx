@@ -1,39 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type ThemeInput = {
   name: string;
-  exerciseCount: number;
+  count: string;
 };
 
 export default function MyBookPage() {
+  const router = useRouter();
+
   const [bookName, setBookName] = useState("");
   const [author, setAuthor] = useState("");
   const [themes, setThemes] = useState<ThemeInput[]>([]);
 
   const addTheme = () => {
-    setThemes([...themes, { name: "", exerciseCount: 1 }]);
+    setThemes([...themes, { name: "", count: "" }]);
   };
 
-  const updateTheme = (index: number, field: keyof ThemeInput, value: any) => {
-    const newThemes = [...themes];
-    newThemes[index] = { ...newThemes[index], [field]: value };
-    setThemes(newThemes);
+  const updateTheme = (index: number, key: keyof ThemeInput, value: string) => {
+    const updated = [...themes];
+    updated[index][key] = value;
+    setThemes(updated);
   };
 
-  const removeTheme = (index: number) => {
-    const newThemes = themes.filter((_, i) => i !== index);
-    setThemes(newThemes);
-  };
-
-  const handleSubmit = async () => {
+  const handleSave = async () => {
     if (!bookName) {
       alert("Book名は必須です");
       return;
     }
 
-    const res = await fetch("/api/books", {
+    await fetch("/api/books", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -41,70 +39,172 @@ export default function MyBookPage() {
       body: JSON.stringify({
         name: bookName,
         author,
-        themes,
+        themes: themes
+          .filter((t) => t.name && t.count)
+          .map((t) => ({
+            name: t.name,
+            exerciseCount: Number(t.count),
+          })),
       }),
     });
 
-    if (res.ok) {
-      alert("保存しました！");
-      setBookName("");
-      setAuthor("");
-      setThemes([]);
-    } else {
-      alert("エラーが発生しました");
-    }
+    alert("保存しました！");
+    router.push("/home");
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>My Book 登録</h1>
+    <div style={container}>
+      {/* ===== ヘッダー ===== */}
+      <div style={header}>
+        <button onClick={() => router.push("/home")} style={backButton}>
+          ← Home
+        </button>
 
-      <div>
-        <label>Book名（必須）</label>
-        <br />
-        <input
-          value={bookName}
-          onChange={(e) => setBookName(e.target.value)}
-        />
+        <h1 style={{ margin: 0 }}>MyBook登録</h1>
       </div>
 
-      <div>
-        <label>著者名（任意）</label>
-        <br />
-        <input value={author} onChange={(e) => setAuthor(e.target.value)} />
-      </div>
+      {/* ===== フォームカード ===== */}
+      <div style={card}>
+        <h2>Book情報</h2>
 
-      <hr />
-
-      <h2>テーマ</h2>
-
-      {themes.map((theme, index) => (
-        <div key={index} style={{ marginBottom: 12 }}>
+        <div style={field}>
+          <label>Book名（必須）</label>
           <input
-            placeholder="テーマ名"
-            value={theme.name}
-            onChange={(e) =>
-              updateTheme(index, "name", e.target.value)
-            }
+            value={bookName}
+            onChange={(e) => setBookName(e.target.value)}
+            placeholder="例: Clarke Studies"
+            style={input}
           />
-          <input
-            type="number"
-            placeholder="エクササイズ数"
-            value={theme.exerciseCount}
-            onChange={(e) =>
-              updateTheme(index, "exerciseCount", Number(e.target.value))
-            }
-            style={{ marginLeft: 8 }}
-          />
-          <button onClick={() => removeTheme(index)}>削除</button>
         </div>
-      ))}
 
-      <button onClick={addTheme}>＋ テーマ追加</button>
+        <div style={field}>
+          <label>著者名（任意）</label>
+          <input
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="例: Herbert L. Clarke"
+            style={input}
+          />
+        </div>
+      </div>
 
-      <hr />
+      {/* ===== テーマ ===== */}
+      <div style={card}>
+        <div style={rowBetween}>
+          <h2>テーマ</h2>
 
-      <button onClick={handleSubmit}>保存</button>
+          <button onClick={addTheme} style={addButton}>
+            ＋ 追加
+          </button>
+        </div>
+
+        {themes.length === 0 && (
+          <p style={{ color: "#888" }}>テーマは未登録でもOKです</p>
+        )}
+
+        {themes.map((theme, i) => (
+          <div key={i} style={themeRow}>
+            <input
+              placeholder="テーマ名"
+              value={theme.name}
+              onChange={(e) =>
+                updateTheme(i, "name", e.target.value)
+              }
+              style={input}
+            />
+
+            <input
+              type="number"
+              placeholder="数"
+              value={theme.count}
+              onChange={(e) =>
+                updateTheme(i, "count", e.target.value)
+              }
+              style={{ ...input, width: 80 }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* ===== 保存ボタン ===== */}
+      <button onClick={handleSave} style={saveButton}>
+        保存する
+      </button>
     </div>
   );
 }
+
+/* ===== スタイル ===== */
+
+const container: React.CSSProperties = {
+  padding: 20,
+  maxWidth: 500,
+  margin: "0 auto",
+};
+
+const header: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  marginBottom: 20,
+};
+
+const backButton: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "none",
+  background: "#eee",
+  cursor: "pointer",
+};
+
+const card: React.CSSProperties = {
+  background: "#fff",
+  padding: 16,
+  borderRadius: 10,
+  marginBottom: 16,
+  boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+};
+
+const field: React.CSSProperties = {
+  marginBottom: 12,
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  padding: 8,
+  marginTop: 4,
+  borderRadius: 6,
+  border: "1px solid #ccc",
+};
+
+const rowBetween: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const addButton: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "none",
+  background: "#1976d2",
+  color: "#fff",
+  cursor: "pointer",
+};
+
+const themeRow: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  marginTop: 8,
+};
+
+const saveButton: React.CSSProperties = {
+  width: "100%",
+  padding: 12,
+  borderRadius: 8,
+  border: "none",
+  background: "#4caf50",
+  color: "#fff",
+  fontSize: 16,
+  cursor: "pointer",
+};

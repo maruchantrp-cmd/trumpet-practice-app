@@ -33,7 +33,32 @@ export default function HomePage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h1>Home</h1>
+      {/* ===== ヘッダー ===== */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <h1>Home</h1>
+
+        {/* 👇 追加ポイント */}
+        <button
+          onClick={() => router.push("/mybook")}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: "none",
+            background: "#1976d2",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          MyBookへ
+        </button>
+      </div>
 
       {books.map((book) => (
         <div
@@ -87,13 +112,10 @@ export default function HomePage() {
                   (e.currentTarget.style.background = "#fafafa")
                 }
               >
-                {/* テーマ名 */}
                 <strong>{theme.name}</strong>
 
-                {/* テーマ進捗バー */}
                 <ProgressBar percent={theme.percent} />
 
-                {/* 数値 */}
                 <p style={{ marginTop: 4, fontSize: 13 }}>
                   {theme.cleared} / {theme.total}（{theme.percent}%）
                 </p>

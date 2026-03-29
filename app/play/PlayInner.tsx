@@ -12,83 +12,49 @@ type Log = {
 export default function PlayInner() {
   const params = useSearchParams();
   const router = useRouter();
+
   const exerciseId = params.get("exerciseId");
+  const themeId = params.get("themeId");
 
   const [tempo, setTempo] = useState<number | "">("");
-  const [targetTempo, setTargetTempo] = useState<number | "">("");
   const [logs, setLogs] = useState<Log[]>([]);
-
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
-  const [showSetupModal, setShowSetupModal] = useState(false);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 初期ロード
   useEffect(() => {
     if (!exerciseId) return;
-
-    setShowConfirm(false);
-    setShowNextAction(false);
-    setShowSetupModal(false);
 
     fetch(`/api/play?exerciseId=${exerciseId}`)
       .then((res) => res.json())
       .then((data) => {
         setLogs(data.logs || []);
-
-        if (data.maxTempo) {
-          setTempo(data.maxTempo);
-        } else if (data.startTempo) {
-          setTempo(data.startTempo);
-        } else {
-          setTempo("");
-        }
-
-        if (data.targetTempo) {
-          setTargetTempo(data.targetTempo);
-        } else {
-          setTargetTempo("");
-        }
-
-        if (!data.startTempo || !data.targetTempo) {
-          setTempo("");
-          setTargetTempo("");
-          setShowSetupModal(true);
-        }
+        setTempo(data.maxTempo || data.startTempo || "");
       });
   }, [exerciseId]);
 
-  // 音準備
   useEffect(() => {
     audioRef.current = new Audio("/click.mp3");
   }, []);
 
-  // メトロノーム開始
   const startMetronome = () => {
     if (isPlaying || tempo === "") return;
 
     const interval = (60 / Number(tempo)) * 1000;
 
     intervalRef.current = setInterval(() => {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play();
-      }
+      audioRef.current?.play();
     }, interval);
 
     setIsPlaying(true);
   };
 
-  // 停止
   const stopMetronome = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    clearInterval(intervalRef.current!);
     setIsPlaying(false);
   };
 
@@ -97,7 +63,6 @@ export default function PlayInner() {
     setShowConfirm(true);
   };
 
-  // 成功
   const handleComplete = async () => {
     if (tempo === "") return;
 
@@ -117,7 +82,6 @@ export default function PlayInner() {
     setShowNextAction(true);
   };
 
-  // 失敗
   const handleFail = async () => {
     if (tempo === "") return;
 
@@ -136,7 +100,10 @@ export default function PlayInner() {
     setShowConfirm(false);
   };
 
-  // 次へ
+  const goExercises = () => {
+    router.push(`/exercises?themeId=${themeId}`);
+  };
+
   const goNext = async () => {
     const res = await fetch(`/api/next-exercise?exerciseId=${exerciseId}`);
     const data = await res.json();
@@ -144,38 +111,50 @@ export default function PlayInner() {
     setShowNextAction(false);
 
     if (data.nextId) {
-      router.push(`/play?exerciseId=${data.nextId}`);
+      router.push(`/play?exerciseId=${data.nextId}&themeId=${themeId}`);
     } else {
-      router.push("/exercises");
+      goExercises();
     }
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Play</h1>
+    <div style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
+      {/* ヘッダー */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+        <button style={backButton} onClick={goExercises}>
+          ← 戻る
+        </button>
+        <h1>Play</h1>
+      </div>
 
       {/* テンポ */}
-      <div style={{ marginBottom: 16 }}>
-        <h2>{tempo === "" ? "--" : tempo} BPM</h2>
+      <div style={card}>
+        <h2 style={{ fontSize: 36 }}>
+          {tempo === "" ? "--" : tempo} BPM
+        </h2>
 
         <input
           type="number"
-          placeholder="例: 60"
           value={tempo}
           onChange={(e) =>
             setTempo(e.target.value === "" ? "" : Number(e.target.value))
           }
+          style={input}
         />
       </div>
 
-      {/* ボタン */}
-      <div>
-        <button onClick={startMetronome} disabled={isPlaying || tempo === ""}>
-          Start
+      {/* 操作 */}
+      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+        <button
+          onClick={startMetronome}
+          disabled={isPlaying || tempo === ""}
+          style={{ ...mainButton, background: "#22c55e" }}
+        >
+          ▶ Start
         </button>
 
-        <button onClick={handleEnd} style={{ marginLeft: 8 }}>
-          End
+        <button onClick={handleEnd} style={dangerButton}>
+          ■ End
         </button>
       </div>
 
@@ -183,102 +162,62 @@ export default function PlayInner() {
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
 
-        <table border={1} cellPadding={6}>
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th>BPM</th>
-              <th>結果</th>
-            </tr>
-          </thead>
-
+        <table style={table}>
           <tbody>
             {logs.map((log, i) => (
               <tr key={i}>
-                <td>{new Date(log.created_at).toLocaleString()}</td>
-                <td>{log.tempo}</td>
-                <td>{log.success ? "成功" : "失敗"}</td>
+                <td>{log.tempo} BPM</td>
+                <td style={{ color: log.success ? "green" : "red" }}>
+                  {log.success ? "OK" : "NG"}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* 判定モーダル */}
+      {/* ===== 判定モーダル ===== */}
       {showConfirm && (
         <Modal>
-          <p>
-            テンポだけでなく発音、アーティキュレーション、音程も正確でしたか？
-            <br />
-            問題なければ完了にしましょう！
-          </p>
-
-          <button onClick={handleComplete}>完了</button>
-          <button onClick={handleFail}>キャンセル</button>
-        </Modal>
-      )}
-
-      {/* 次アクション */}
-      {showNextAction && (
-        <Modal>
-          <h3>次はどうする？</h3>
-
-          <button onClick={() => router.push("/exercises")}>中止</button>
-          <button onClick={() => setShowNextAction(false)}>
-            再チャレンジ
-          </button>
-          <button onClick={goNext}>次のエクササイズ</button>
-        </Modal>
-      )}
-
-      {/* 初期設定 */}
-      {showSetupModal && (
-        <Modal>
-          <h2>テンポ設定</h2>
-
-          <input
-            type="number"
-            placeholder="開始テンポ"
-            value={tempo}
-            onChange={(e) =>
-              setTempo(e.target.value === "" ? "" : Number(e.target.value))
-            }
-          />
-
-          <input
-            type="number"
-            placeholder="目標テンポ"
-            value={targetTempo}
-            onChange={(e) =>
-              setTargetTempo(
-                e.target.value === "" ? "" : Number(e.target.value)
-              )
-            }
-          />
+          <h3 style={{ textAlign: "center" }}>うまくできた？</h3>
 
           <button
-            onClick={async () => {
-              if (tempo === "" || targetTempo === "") {
-                alert("入力してください");
-                return;
-              }
-
-              await fetch("/api/exercise-settings", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  exerciseId,
-                  startTempo: Number(tempo),
-                  targetTempo: Number(targetTempo),
-                }),
-              });
-
-              setShowSetupModal(false);
-            }}
+            onClick={handleComplete}
+            style={{ ...bigButton, background: "#22c55e" }}
           >
-            保存
+            👍 OK
+          </button>
+
+          <button
+            onClick={handleFail}
+            style={{ ...bigButton, background: "#ef4444" }}
+          >
+            👎 NG
+          </button>
+        </Modal>
+      )}
+
+      {/* ===== 次アクション ===== */}
+      {showNextAction && (
+        <Modal>
+          <h3 style={{ textAlign: "center" }}>次どうする？</h3>
+
+          <button onClick={goExercises} style={subButton}>
+            終了
+          </button>
+
+          <button
+            onClick={() => setShowNextAction(false)}
+            style={{ ...bigButton, background: "#3b82f6" }}
+          >
+            🔁 もう一度
+          </button>
+
+          <button
+            onClick={goNext}
+            style={{ ...bigButton, background: "#22c55e" }}
+          >
+            ▶ 次へ
           </button>
         </Modal>
       )}
@@ -286,30 +225,86 @@ export default function PlayInner() {
   );
 }
 
-/* モーダル */
+/* ===== UI ===== */
+
 function Modal({ children }: { children: React.ReactNode }) {
   return (
-    <div style={overlayStyle}>
-      <div style={modalStyle}>{children}</div>
+    <div style={overlay}>
+      <div style={modal}>{children}</div>
     </div>
   );
 }
 
-const overlayStyle: React.CSSProperties = {
+const overlay: React.CSSProperties = {
   position: "fixed",
-  top: 0,
-  left: 0,
-  width: "100%",
-  height: "100%",
+  inset: 0,
   background: "rgba(0,0,0,0.5)",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
 };
 
-const modalStyle: React.CSSProperties = {
+const modal: React.CSSProperties = {
   background: "#fff",
   padding: 24,
+  borderRadius: 12,
+  width: 280,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const card: React.CSSProperties = {
+  background: "#fff",
+  padding: 16,
+  borderRadius: 12,
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  padding: 10,
+};
+
+const mainButton: React.CSSProperties = {
+  flex: 1,
+  padding: 12,
   borderRadius: 10,
-  width: 320,
+  color: "#fff",
+  border: "none",
+};
+
+const dangerButton: React.CSSProperties = {
+  flex: 1,
+  padding: 12,
+  borderRadius: 10,
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+};
+
+const bigButton: React.CSSProperties = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 10,
+  color: "#fff",
+  border: "none",
+  fontSize: 16,
+};
+
+const subButton: React.CSSProperties = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  background: "#fff",
+};
+
+const backButton: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid #ccc",
+};
+
+const table: React.CSSProperties = {
+  width: "100%",
 };
