@@ -9,6 +9,15 @@ type Log = {
   success: boolean;
 };
 
+type CountMode = "single" | "double" | "triple" | "quad";
+
+const multiplierMap: Record<CountMode, number> = {
+  single: 1,
+  double: 2,
+  triple: 3,
+  quad: 4,
+};
+
 export default function PlayInner() {
   const params = useSearchParams();
   const router = useRouter();
@@ -16,39 +25,49 @@ export default function PlayInner() {
   const exerciseId = params.get("exerciseId");
   const themeId = params.get("themeId");
 
-  const [tempo, setTempo] = useState<number>(120);
-  const [tempoInput, setTempoInput] = useState<string>("120");
+  // =========================
+  // 🎯 tempo state
+  // =========================
+  const [tempo, setTempo] = useState<number | null>(null);
+  const [tempoInput, setTempoInput] = useState<string>("");
+
   const tempoRef = useRef<number>(120);
 
+  // =========================
+  // 🎛 count mode
+  // =========================
+  const [countMode, setCountMode] = useState<CountMode>("single");
+  const countModeRef = useRef<CountMode>("single");
+
+  // =========================
+  // logs / UI
+  // =========================
   const [logs, setLogs] = useState<Log[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
 
-  // 🎧 AudioContext
   const audioCtxRef = useRef<AudioContext | null>(null);
-
-  // ⏱ timing
   const nextNoteTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
 
   const scheduleAheadTime = 0.2;
 
-  /**
-   * =========================
-   * tempo sync
-   * =========================
-   */
+  // =========================
+  // sync refs
+  // =========================
   useEffect(() => {
-    tempoRef.current = tempo;
+    if (tempo !== null) tempoRef.current = tempo;
   }, [tempo]);
 
-  /**
-   * =========================
-   * init data
-   * =========================
-   */
+  useEffect(() => {
+    countModeRef.current = countMode;
+  }, [countMode]);
+
+  // =========================
+  // fetch init data
+  // =========================
   useEffect(() => {
     if (!exerciseId) return;
 
@@ -65,11 +84,9 @@ export default function PlayInner() {
       });
   }, [exerciseId]);
 
-  /**
-   * =========================
-   * 🔓 iOS audio unlock (silent buffer trick)
-   * =========================
-   */
+  // =========================
+  // 🎧 iOS unlock
+  // =========================
   const unlockAudio = (ctx: AudioContext) => {
     const buffer = ctx.createBuffer(1, 1, 22050);
     const src = ctx.createBufferSource();
@@ -78,11 +95,9 @@ export default function PlayInner() {
     src.start(0);
   };
 
-  /**
-   * =========================
-   * 🔊 click sound (stable envelope)
-   * =========================
-   */
+  // =========================
+  // 🔊 click sound
+  // =========================
   const playClick = (time: number) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -104,16 +119,17 @@ export default function PlayInner() {
     osc.stop(time + 0.06);
   };
 
-  /**
-   * =========================
-   * 🎯 rAF scheduler (AudioContext time base)
-   * =========================
-   */
+  // =========================
+  // 🎯 scheduler
+  // =========================
   const scheduler = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
-    const secondsPerBeat = 60 / tempoRef.current;
+    const multiplier = multiplierMap[countModeRef.current];
+    const bpm = (tempoRef.current || 120) * multiplier;
+
+    const secondsPerBeat = 60 / bpm;
 
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
       playClick(nextNoteTimeRef.current);
@@ -123,11 +139,9 @@ export default function PlayInner() {
     rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  /**
-   * =========================
-   * ▶ Start (core unchanged behavior)
-   * =========================
-   */
+  // =========================
+  // ▶ start
+  // =========================
   const startMetronome = async () => {
     const AudioContextClass =
       window.AudioContext || (window as any).webkitAudioContext;
@@ -137,15 +151,8 @@ export default function PlayInner() {
     }
 
     const ctx = audioCtxRef.current;
-
     await ctx.resume();
 
-    // UI補助（機能変更なし）
-    console.log("AudioContext state:", ctx.state);
-
-    if (ctx.state !== "running") return;
-
-    // iOSアンロック（内部のみ強化）
     unlockAudio(ctx);
 
     nextNoteTimeRef.current = ctx.currentTime + 0.1;
@@ -154,25 +161,20 @@ export default function PlayInner() {
     rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  /**
-   * =========================
-   * ⏸ Stop
-   * =========================
-   */
+  // =========================
+  // ⏸ stop
+  // =========================
   const stopMetronome = () => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-
     setIsPlaying(false);
   };
 
-  /**
-   * =========================
-   * ■ End
-   * =========================
-   */
+  // =========================
+  // UI handlers
+  // =========================
   const handleEnd = () => {
     stopMetronome();
 
@@ -230,11 +232,9 @@ export default function PlayInner() {
     }
   };
 
-  /**
-   * =========================
-   * UI
-   * =========================
-   */
+  // =========================
+  // UI
+  // =========================
   return (
     <div style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
@@ -242,16 +242,15 @@ export default function PlayInner() {
           ← 戻る
         </button>
 
-        <h1>Play (AudioContext + rAF Stable)</h1>
+        <h1>Play Metronome</h1>
       </div>
 
-      {/* UI補助（追加のみ） */}
-      <div style={hint}>
-        🔊 音が出ない場合：iPhoneのサイレントモードを確認してください
-      </div>
+      <div style={hint}>🔊 iPhoneはサイレントモードも確認</div>
 
       <div style={card}>
-        <h2 style={{ fontSize: 36 }}>{tempo} BPM</h2>
+        <h2 style={{ fontSize: 36 }}>
+          {tempo === null ? "…" : tempo} BPM
+        </h2>
 
         <input
           type="text"
@@ -261,16 +260,31 @@ export default function PlayInner() {
             const v = e.target.value;
             setTempoInput(v);
 
-            if (v === "") return;
-
             const num = Number(v);
             if (!isNaN(num)) {
               setTempo(num);
-              tempoRef.current = num;
             }
           }}
           style={input}
         />
+
+        {/* 🎛 count mode UI */}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>カウント</div>
+
+          {(["single", "double", "triple", "quad"] as CountMode[]).map(
+            (mode) => (
+              <label key={mode} style={{ marginRight: 12 }}>
+                <input
+                  type="radio"
+                  checked={countMode === mode}
+                  onChange={() => setCountMode(mode)}
+                />
+                {mode}
+              </label>
+            )
+          )}
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
@@ -311,14 +325,13 @@ export default function PlayInner() {
         </table>
       </div>
 
+      {/* Modals */}
       {showConfirm && (
         <Modal>
           <h3>うまくできた？</h3>
-
           <button onClick={handleComplete} style={ok}>
             👍 OK
           </button>
-
           <button onClick={handleFail} style={ng}>
             👎 NG
           </button>
@@ -347,9 +360,7 @@ export default function PlayInner() {
 }
 
 /**
- * =========================
  * Modal
- * =========================
  */
 function Modal({ children }: { children: React.ReactNode }) {
   return (
@@ -360,9 +371,7 @@ function Modal({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * =========================
  * styles
- * =========================
  */
 const overlay: React.CSSProperties = {
   position: "fixed",
