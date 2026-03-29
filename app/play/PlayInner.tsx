@@ -66,6 +66,9 @@ export default function PlayInner() {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
+    // ★これが効くことがある（iOS対策）
+    ctx.destination.channelCount = 1;
+
     osc.frequency.value = 1000;
 
     // パンチのある短音
