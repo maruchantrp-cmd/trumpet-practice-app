@@ -43,7 +43,7 @@ function ExercisesInner() {
   }, [themeId]);
 
   const goHome = () => {
-    router.push("/home");
+    router.push("/");
   };
 
   const handleClick = (ex: Exercise) => {

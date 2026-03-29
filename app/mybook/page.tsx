@@ -49,14 +49,14 @@ export default function MyBookPage() {
     });
 
     alert("保存しました！");
-    router.push("/home");
+    router.push("/");
   };
 
   return (
     <div style={container}>
       {/* ===== ヘッダー ===== */}
       <div style={header}>
-        <button onClick={() => router.push("/home")} style={backButton}>
+        <button onClick={() => router.push("/")} style={backButton}>
           ← Home
         </button>
 
