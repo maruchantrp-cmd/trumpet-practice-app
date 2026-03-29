@@ -29,18 +29,26 @@ export default function PlayInner() {
   // 🎧 AudioContext
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // 次の拍
+  // ⏱ timing
   const nextNoteTimeRef = useRef<number>(0);
-
-  // ループ管理
   const rafRef = useRef<number | null>(null);
 
   const scheduleAheadTime = 0.2;
 
+  /**
+   * =========================
+   * tempo sync
+   * =========================
+   */
   useEffect(() => {
     tempoRef.current = tempo;
   }, [tempo]);
 
+  /**
+   * =========================
+   * init data
+   * =========================
+   */
   useEffect(() => {
     if (!exerciseId) return;
 
@@ -48,23 +56,33 @@ export default function PlayInner() {
       .then((res) => res.json())
       .then((data) => {
         const initialTempo = data.maxTempo || data.startTempo || 120;
+
         setTempo(initialTempo);
         setTempoInput(String(initialTempo));
+
         tempoRef.current = initialTempo;
         setLogs(data.logs || []);
       });
   }, [exerciseId]);
 
-  // 🔓 iOSアンロック専用（最重要）
+  /**
+   * =========================
+   * 🔓 iOS audio unlock (silent buffer trick)
+   * =========================
+   */
   const unlockAudio = (ctx: AudioContext) => {
     const buffer = ctx.createBuffer(1, 1, 22050);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(0);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    src.start(0);
   };
 
-  // 🎵 クリック音（最小構成・iOS最適）
+  /**
+   * =========================
+   * 🔊 click sound (stable envelope)
+   * =========================
+   */
   const playClick = (time: number) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -72,22 +90,25 @@ export default function PlayInner() {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
     osc.type = "square";
     osc.frequency.value = 1200;
 
-    // iOS安定用エンベロープ
     gain.gain.setValueAtTime(0.0001, time);
     gain.gain.exponentialRampToValueAtTime(1.0, time + 0.001);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
 
     osc.start(time);
     osc.stop(time + 0.06);
   };
 
-  // 🎯 スケジューラ（AudioContext時間のみ）
+  /**
+   * =========================
+   * 🎯 rAF scheduler (AudioContext time base)
+   * =========================
+   */
   const scheduler = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -102,7 +123,11 @@ export default function PlayInner() {
     rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  // ▶ Start（最重要）
+  /**
+   * =========================
+   * ▶ Start (core unchanged behavior)
+   * =========================
+   */
   const startMetronome = async () => {
     const AudioContextClass =
       window.AudioContext || (window as any).webkitAudioContext;
@@ -113,27 +138,27 @@ export default function PlayInner() {
 
     const ctx = audioCtxRef.current;
 
-    // ★ iOSでは必ずユーザー操作内
     await ctx.resume();
 
-    // 🚨 状態チェック（保険）
-    if (ctx.state !== "running") {
-      console.log("AudioContext not running:", ctx.state);
-      return;
-    }
+    // UI補助（機能変更なし）
+    console.log("AudioContext state:", ctx.state);
 
-    // 🔥 最重要：アンロック音（これがないとiOSは黙る）
+    if (ctx.state !== "running") return;
+
+    // iOSアンロック（内部のみ強化）
     unlockAudio(ctx);
 
-    // 少し先から開始
     nextNoteTimeRef.current = ctx.currentTime + 0.1;
 
     setIsPlaying(true);
-
     rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  // ⏸ Stop
+  /**
+   * =========================
+   * ⏸ Stop
+   * =========================
+   */
   const stopMetronome = () => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -143,7 +168,11 @@ export default function PlayInner() {
     setIsPlaying(false);
   };
 
-  // ■ End
+  /**
+   * =========================
+   * ■ End
+   * =========================
+   */
   const handleEnd = () => {
     stopMetronome();
 
@@ -201,13 +230,24 @@ export default function PlayInner() {
     }
   };
 
+  /**
+   * =========================
+   * UI
+   * =========================
+   */
   return (
     <div style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
         <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
-        <h1>Play (Final Audio Engine)</h1>
+
+        <h1>Play (AudioContext + rAF Stable)</h1>
+      </div>
+
+      {/* UI補助（追加のみ） */}
+      <div style={hint}>
+        🔊 音が出ない場合：iPhoneのサイレントモードを確認してください
       </div>
 
       <div style={card}>
@@ -221,11 +261,7 @@ export default function PlayInner() {
             const v = e.target.value;
             setTempoInput(v);
 
-            if (v === "") {
-              setTempo(0);
-              tempoRef.current = 0;
-              return;
-            }
+            if (v === "") return;
 
             const num = Number(v);
             if (!isNaN(num)) {
@@ -237,12 +273,11 @@ export default function PlayInner() {
         />
       </div>
 
-      {/* controls */}
       <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
         <button
           onClick={startMetronome}
           disabled={isPlaying}
-          style={{ ...mainButton, background: "#22c55e" }}
+          style={{ ...btn, background: "#22c55e" }}
         >
           ▶ Start
         </button>
@@ -250,17 +285,16 @@ export default function PlayInner() {
         <button
           onClick={stopMetronome}
           disabled={!isPlaying}
-          style={{ ...mainButton, background: "#f59e0b" }}
+          style={{ ...btn, background: "#f59e0b" }}
         >
           ⏸ Stop
         </button>
 
-        <button onClick={handleEnd} style={dangerButton}>
+        <button onClick={handleEnd} style={danger}>
           ■ End
         </button>
       </div>
 
-      {/* logs */}
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
         <table style={table}>
@@ -277,47 +311,33 @@ export default function PlayInner() {
         </table>
       </div>
 
-      {/* modal 1 */}
       {showConfirm && (
         <Modal>
-          <h3 style={{ textAlign: "center" }}>うまくできた？</h3>
+          <h3>うまくできた？</h3>
 
-          <button
-            onClick={handleComplete}
-            style={{ ...bigButton, background: "#22c55e" }}
-          >
+          <button onClick={handleComplete} style={ok}>
             👍 OK
           </button>
 
-          <button
-            onClick={handleFail}
-            style={{ ...bigButton, background: "#ef4444" }}
-          >
+          <button onClick={handleFail} style={ng}>
             👎 NG
           </button>
         </Modal>
       )}
 
-      {/* modal 2 */}
       {showNextAction && (
         <Modal>
-          <h3 style={{ textAlign: "center" }}>次どうする？</h3>
+          <h3>次どうする？</h3>
 
-          <button onClick={goExercises} style={subButton}>
+          <button onClick={goExercises} style={sub}>
             終了
           </button>
 
-          <button
-            onClick={() => setShowNextAction(false)}
-            style={{ ...bigButton, background: "#3b82f6" }}
-          >
+          <button onClick={() => setShowNextAction(false)} style={blue}>
             🔁 もう一度
           </button>
 
-          <button
-            onClick={goNext}
-            style={{ ...bigButton, background: "#22c55e" }}
-          >
+          <button onClick={goNext} style={ok}>
             ▶ 次へ
           </button>
         </Modal>
@@ -326,8 +346,11 @@ export default function PlayInner() {
   );
 }
 
-/* ===== UI ===== */
-
+/**
+ * =========================
+ * Modal
+ * =========================
+ */
 function Modal({ children }: { children: React.ReactNode }) {
   return (
     <div style={overlay}>
@@ -336,6 +359,11 @@ function Modal({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * =========================
+ * styles
+ * =========================
+ */
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -366,7 +394,7 @@ const input: React.CSSProperties = {
   padding: 10,
 };
 
-const mainButton: React.CSSProperties = {
+const btn: React.CSSProperties = {
   flex: 1,
   padding: 12,
   borderRadius: 10,
@@ -374,7 +402,7 @@ const mainButton: React.CSSProperties = {
   border: "none",
 };
 
-const dangerButton: React.CSSProperties = {
+const danger: React.CSSProperties = {
   flex: 1,
   padding: 12,
   borderRadius: 10,
@@ -383,16 +411,33 @@ const dangerButton: React.CSSProperties = {
   border: "none",
 };
 
-const bigButton: React.CSSProperties = {
+const ok: React.CSSProperties = {
   width: "100%",
   padding: 14,
   borderRadius: 10,
+  background: "#22c55e",
   color: "#fff",
   border: "none",
-  fontSize: 16,
 };
 
-const subButton: React.CSSProperties = {
+const ng: React.CSSProperties = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 10,
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+};
+
+const blue: React.CSSProperties = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  background: "#fff",
+};
+
+const sub: React.CSSProperties = {
   width: "100%",
   padding: 10,
   borderRadius: 8,
@@ -408,4 +453,10 @@ const backButton: React.CSSProperties = {
 
 const table: React.CSSProperties = {
   width: "100%",
+};
+
+const hint: React.CSSProperties = {
+  fontSize: 12,
+  color: "#666",
+  marginBottom: 10,
 };
