@@ -16,15 +16,27 @@ export default function PlayInner() {
   const exerciseId = params.get("exerciseId");
   const themeId = params.get("themeId");
 
-  const [tempo, setTempo] = useState<number | "">("");
+  const [tempo, setTempo] = useState<number>(120);
+  const [tempoInput, setTempoInput] = useState<string>("120");
+  const tempoRef = useRef<number>(120);
+
   const [logs, setLogs] = useState<Log[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // 🎧 Web Audio API
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const nextNoteTimeRef = useRef<number>(0);
+  const timerIdRef = useRef<NodeJS.Timeout | null>(null);
+
+  const scheduleAheadTime = 0.1;
+  const lookahead = 25;
+
+  useEffect(() => {
+    tempoRef.current = tempo;
+  }, [tempo]);
 
   useEffect(() => {
     if (!exerciseId) return;
@@ -32,48 +44,97 @@ export default function PlayInner() {
     fetch(`/api/play?exerciseId=${exerciseId}`)
       .then((res) => res.json())
       .then((data) => {
+        const initialTempo = data.maxTempo || data.startTempo || 120;
+        setTempo(initialTempo);
+        tempoRef.current = initialTempo;
         setLogs(data.logs || []);
-        setTempo(data.maxTempo || data.startTempo || "");
       });
   }, [exerciseId]);
 
-  useEffect(() => {
-    audioRef.current = new Audio("/click.mp3");
-  }, []);
+  // 🎵 クリック音
+  const playClick = (time: number) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
 
-  const startMetronome = () => {
-    if (isPlaying || tempo === "") return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
 
-    const interval = (60 / Number(tempo)) * 1000;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
 
-    intervalRef.current = setInterval(() => {
-      audioRef.current?.play();
-    }, interval);
+    osc.frequency.value = 1000;
+    gain.gain.setValueAtTime(1, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
 
-    setIsPlaying(true);
+    osc.start(time);
+    osc.stop(time + 0.05);
   };
 
+  // 🎯 スケジューラ
+  const scheduler = () => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
+      playClick(nextNoteTimeRef.current);
+
+      const secondsPerBeat = 60 / tempoRef.current;
+      nextNoteTimeRef.current += secondsPerBeat;
+    }
+  };
+
+  // ▶ Start（再開対応）
+  const startMetronome = async () => {
+    if (isPlaying) return;
+
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext;
+
+    // 初回のみ生成
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContextClass();
+    }
+
+    const ctx = audioCtxRef.current;
+
+    await ctx.resume();
+
+    nextNoteTimeRef.current = ctx.currentTime + 0.05;
+
+    setIsPlaying(true);
+
+    timerIdRef.current = setInterval(scheduler, lookahead);
+  };
+
+  // ⏸ Stop（追加：一時停止）
   const stopMetronome = () => {
-    clearInterval(intervalRef.current!);
+    if (timerIdRef.current) {
+      clearInterval(timerIdRef.current);
+      timerIdRef.current = null;
+    }
+
     setIsPlaying(false);
   };
 
+  // ■ End（完全終了）
   const handleEnd = () => {
     stopMetronome();
+
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+
     setShowConfirm(true);
   };
 
   const handleComplete = async () => {
-    if (tempo === "") return;
-
     await fetch("/api/exercise-logs", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         exerciseId,
-        tempo: Number(tempo),
+        tempo: tempoRef.current,
         success: true,
       }),
     });
@@ -83,16 +144,12 @@ export default function PlayInner() {
   };
 
   const handleFail = async () => {
-    if (tempo === "") return;
-
     await fetch("/api/exercise-logs", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         exerciseId,
-        tempo: Number(tempo),
+        tempo: tempoRef.current,
         success: false,
       }),
     });
@@ -119,38 +176,51 @@ export default function PlayInner() {
 
   return (
     <div style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
-      {/* ヘッダー */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        <button style={backButton} onClick={goExercises}>
+        <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
-        <h1>Play</h1>
+        <h1>Play (Web Audio)</h1>
       </div>
 
-      {/* テンポ */}
       <div style={card}>
-        <h2 style={{ fontSize: 36 }}>
-          {tempo === "" ? "--" : tempo} BPM
-        </h2>
+        <h2 style={{ fontSize: 36 }}>{tempo} BPM</h2>
 
         <input
-          type="number"
-          value={tempo}
-          onChange={(e) =>
-            setTempo(e.target.value === "" ? "" : Number(e.target.value))
-          }
+          type="text"
+          inputMode="numeric"
+          value={tempoInput}
+          onChange={(e) => {
+            const v = e.target.value;
+
+            setTempoInput(v);
+
+            const num = Number(v);
+            if (!isNaN(num)) {
+              setTempo(num);
+              tempoRef.current = num;
+            }
+          }}
           style={input}
         />
       </div>
 
-      {/* 操作 */}
+      {/* 🎛 controls */}
       <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
         <button
           onClick={startMetronome}
-          disabled={isPlaying || tempo === ""}
+          disabled={isPlaying}
           style={{ ...mainButton, background: "#22c55e" }}
         >
           ▶ Start
+        </button>
+
+        <button
+          onClick={stopMetronome}
+          disabled={!isPlaying}
+          style={{ ...mainButton, background: "#f59e0b" }}
+        >
+          ⏸ Stop
         </button>
 
         <button onClick={handleEnd} style={dangerButton}>
@@ -158,7 +228,7 @@ export default function PlayInner() {
         </button>
       </div>
 
-      {/* 履歴 */}
+      {/* logs */}
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
 
@@ -176,7 +246,7 @@ export default function PlayInner() {
         </table>
       </div>
 
-      {/* ===== 判定モーダル ===== */}
+      {/* modal 1 */}
       {showConfirm && (
         <Modal>
           <h3 style={{ textAlign: "center" }}>うまくできた？</h3>
@@ -197,7 +267,7 @@ export default function PlayInner() {
         </Modal>
       )}
 
-      {/* ===== 次アクション ===== */}
+      {/* modal 2 */}
       {showNextAction && (
         <Modal>
           <h3 style={{ textAlign: "center" }}>次どうする？</h3>
