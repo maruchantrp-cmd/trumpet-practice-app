@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 type Exercise = {
@@ -15,6 +15,14 @@ type Exercise = {
 };
 
 export default function ExercisesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading...</div>}>
+      <ExercisesInner />
+    </Suspense>
+  );
+}
+
+function ExercisesInner() {
   const params = useSearchParams();
   const router = useRouter();
   const themeId = params.get("themeId");
@@ -36,13 +44,15 @@ export default function ExercisesPage() {
 
   // クリック時
   const handleClick = (ex: Exercise) => {
-    // 既に設定済みならそのまま遷移
     if (ex.startTempo && ex.targetTempo) {
       router.push(`/play?exerciseId=${ex.id}`);
       return;
     }
 
-    // 未設定ならモーダル表示
+    // モーダル開くときにリセット（←地味に重要）
+    setStartTempo("");
+    setTargetTempo("");
+
     setSelectedExercise(ex);
   };
 
@@ -133,6 +143,7 @@ export default function ExercisesPage() {
               <br />
               <input
                 type="number"
+                placeholder="例: 60"
                 value={startTempo}
                 onChange={(e) => setStartTempo(e.target.value)}
               />
@@ -143,6 +154,7 @@ export default function ExercisesPage() {
               <br />
               <input
                 type="number"
+                placeholder="例: 120"
                 value={targetTempo}
                 onChange={(e) => setTargetTempo(e.target.value)}
               />
