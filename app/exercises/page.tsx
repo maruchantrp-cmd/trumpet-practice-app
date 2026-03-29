@@ -28,54 +28,70 @@ function ExercisesInner() {
   const themeId = params.get("themeId");
 
   const [data, setData] = useState<Exercise[]>([]);
+  const [selected, setSelected] = useState<Exercise | null>(null);
+
+  const [startTempo, setStartTempo] = useState("");
+  const [targetTempo, setTargetTempo] = useState("");
 
   useEffect(() => {
     if (!themeId) return;
 
-    fetch(`/api/exercises?themeId=${themeId}`, {
-      cache: "no-store",
-    })
+    fetch(`/api/exercises?themeId=${themeId}`, { cache: "no-store" })
       .then((res) => res.json())
-      .then((res) => {
-        console.log("API result:", res);
-        setData(res);
-      });
+      .then(setData);
   }, [themeId]);
 
   const goHome = () => {
     router.push("/");
   };
 
+  // 👇 修正ポイント
   const handleClick = (ex: Exercise) => {
-    router.push(`/play?exerciseId=${ex.id}&themeId=${themeId}`);
+    if (ex.startTempo && ex.targetTempo) {
+      router.push(`/play?exerciseId=${ex.id}&themeId=${themeId}`);
+    } else {
+      setStartTempo("");
+      setTargetTempo("");
+      setSelected(ex);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selected) return;
+
+    if (!startTempo || !targetTempo) {
+      alert("テンポを入力してください");
+      return;
+    }
+
+    await fetch("/api/exercise-settings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        exerciseId: selected.id,
+        startTempo: Number(startTempo),
+        targetTempo: Number(targetTempo),
+      }),
+    });
+
+    router.push(`/play?exerciseId=${selected.id}&themeId=${themeId}`);
   };
 
   return (
     <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
       {/* ===== ヘッダー ===== */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <button style={homeButton} onClick={goHome}>
           🏠 Home
         </button>
-
         <h1 style={{ margin: 0 }}>エクササイズ一覧</h1>
       </div>
 
       {/* ===== 一覧 ===== */}
       {data.map((ex) => (
-        <div
-          key={ex.id}
-          onClick={() => handleClick(ex)}
-          style={card}
-        >
-          {/* タイトル */}
+        <div key={ex.id} onClick={() => handleClick(ex)} style={card}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <span
               style={{
@@ -92,12 +108,10 @@ function ExercisesInner() {
             </strong>
           </div>
 
-          {/* テンポ */}
           <div style={{ marginTop: 8 }}>
             {ex.targetTempo ? (
               <>
                 <ProgressBar percent={ex.percent} />
-
                 <p style={{ marginTop: 4 }}>
                   {ex.bestTempo} / {ex.targetTempo}
                 </p>
@@ -108,6 +122,55 @@ function ExercisesInner() {
           </div>
         </div>
       ))}
+
+      {/* ===== モーダル ===== */}
+      {selected && (
+        <div style={overlay}>
+          <div style={modal}>
+            <h2>テンポ設定</h2>
+
+            <p style={{ marginBottom: 12 }}>
+              No.{selected.index} を始める前に設定しましょう
+            </p>
+
+            <div style={{ marginBottom: 12 }}>
+              <label>開始テンポ</label>
+              <input
+                type="number"
+                placeholder="例: 60"
+                value={startTempo}
+                onChange={(e) => setStartTempo(e.target.value)}
+                style={input}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label>目標テンポ</label>
+              <input
+                type="number"
+                placeholder="例: 120"
+                value={targetTempo}
+                onChange={(e) => setTargetTempo(e.target.value)}
+                style={input}
+              />
+            </div>
+
+            {/* 👇 ボタン改善 */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={primaryButton} onClick={handleSave}>
+                保存して開始
+              </button>
+
+              <button
+                style={secondaryButton}
+                onClick={() => setSelected(null)}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -151,5 +214,50 @@ const homeButton: React.CSSProperties = {
   border: "1px solid #ccc",
   background: "#fff",
   cursor: "pointer",
-  fontSize: 14,
+};
+
+const overlay: React.CSSProperties = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+};
+
+const modal: React.CSSProperties = {
+  background: "#fff",
+  padding: 20,
+  borderRadius: 12,
+  width: 320,
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  padding: 8,
+  marginTop: 4,
+  borderRadius: 6,
+  border: "1px solid #ccc",
+};
+
+const primaryButton: React.CSSProperties = {
+  flex: 1,
+  padding: 10,
+  borderRadius: 8,
+  border: "none",
+  background: "#22c55e",
+  color: "#fff",
+  cursor: "pointer",
+};
+
+const secondaryButton: React.CSSProperties = {
+  flex: 1,
+  padding: 10,
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  background: "#fff",
+  cursor: "pointer",
 };
