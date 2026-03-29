@@ -26,13 +26,16 @@ export default function PlayInner() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
 
-  // 🎧 Web Audio API
+  // 🎧 Web Audio
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // 次に鳴らす時刻
   const nextNoteTimeRef = useRef<number>(0);
-  const timerIdRef = useRef<NodeJS.Timeout | null>(null);
+
+  // requestAnimationFrame制御
+  const rafIdRef = useRef<number | null>(null);
 
   const scheduleAheadTime = 0.1;
-  const lookahead = 25;
 
   useEffect(() => {
     tempoRef.current = tempo;
@@ -46,6 +49,7 @@ export default function PlayInner() {
       .then((data) => {
         const initialTempo = data.maxTempo || data.startTempo || 120;
         setTempo(initialTempo);
+        setTempoInput(String(initialTempo));
         tempoRef.current = initialTempo;
         setLogs(data.logs || []);
       });
@@ -63,6 +67,7 @@ export default function PlayInner() {
     gain.connect(ctx.destination);
 
     osc.frequency.value = 1000;
+
     gain.gain.setValueAtTime(1, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
 
@@ -70,27 +75,32 @@ export default function PlayInner() {
     osc.stop(time + 0.05);
   };
 
-  // 🎯 スケジューラ
+  // 🎯 スケジューラ（未来分をまとめて予約）
   const scheduler = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
+    const secondsPerBeat = 60 / tempoRef.current;
+
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
       playClick(nextNoteTimeRef.current);
-
-      const secondsPerBeat = 60 / tempoRef.current;
       nextNoteTimeRef.current += secondsPerBeat;
     }
   };
 
-  // ▶ Start（再開対応）
+  // 🔁 requestAnimationFrameループ
+  const tick = () => {
+    scheduler();
+    rafIdRef.current = requestAnimationFrame(tick);
+  };
+
+  // ▶ Start
   const startMetronome = async () => {
     if (isPlaying) return;
 
     const AudioContextClass =
       window.AudioContext || (window as any).webkitAudioContext;
 
-    // 初回のみ生成
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContextClass();
     }
@@ -102,21 +112,20 @@ export default function PlayInner() {
     nextNoteTimeRef.current = ctx.currentTime + 0.05;
 
     setIsPlaying(true);
-
-    timerIdRef.current = setInterval(scheduler, lookahead);
+    rafIdRef.current = requestAnimationFrame(tick);
   };
 
-  // ⏸ Stop（追加：一時停止）
+  // ⏸ Stop
   const stopMetronome = () => {
-    if (timerIdRef.current) {
-      clearInterval(timerIdRef.current);
-      timerIdRef.current = null;
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
     }
 
     setIsPlaying(false);
   };
 
-  // ■ End（完全終了）
+  // ■ End
   const handleEnd = () => {
     stopMetronome();
 
@@ -180,7 +189,7 @@ export default function PlayInner() {
         <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
-        <h1>Play (Web Audio)</h1>
+        <h1>Play (RAF Audio Engine)</h1>
       </div>
 
       <div style={card}>
@@ -192,8 +201,14 @@ export default function PlayInner() {
           value={tempoInput}
           onChange={(e) => {
             const v = e.target.value;
-
             setTempoInput(v);
+
+            // 空文字対応（0残り防止）
+            if (v === "") {
+              setTempo(0);
+              tempoRef.current = 0;
+              return;
+            }
 
             const num = Number(v);
             if (!isNaN(num)) {
@@ -205,7 +220,7 @@ export default function PlayInner() {
         />
       </div>
 
-      {/* 🎛 controls */}
+      {/* controls */}
       <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
         <button
           onClick={startMetronome}
