@@ -26,16 +26,16 @@ export default function PlayInner() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNextAction, setShowNextAction] = useState(false);
 
-  // 🎧 Web Audio
+  // 🎧 AudioContext
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // 次に鳴らす時刻
+  // 次に鳴らす絶対時刻（AudioContext基準）
   const nextNoteTimeRef = useRef<number>(0);
 
-  // requestAnimationFrame制御
-  const rafIdRef = useRef<number | null>(null);
+  // ループ制御
+  const timerRef = useRef<number | null>(null);
 
-  const scheduleAheadTime = 0.1;
+  const scheduleAheadTime = 0.15; // 少し広め（スマホ安定化）
 
   useEffect(() => {
     tempoRef.current = tempo;
@@ -68,6 +68,7 @@ export default function PlayInner() {
 
     osc.frequency.value = 1000;
 
+    // パンチのある短音
     gain.gain.setValueAtTime(1, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
 
@@ -75,23 +76,21 @@ export default function PlayInner() {
     osc.stop(time + 0.05);
   };
 
-  // 🎯 スケジューラ（未来分をまとめて予約）
+  // 🎯 クロック駆動スケジューラ（AudioContext時間基準）
   const scheduler = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
     const secondsPerBeat = 60 / tempoRef.current;
 
+    // 現在時刻 + 少し先までを予約
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
       playClick(nextNoteTimeRef.current);
       nextNoteTimeRef.current += secondsPerBeat;
     }
-  };
 
-  // 🔁 requestAnimationFrameループ
-  const tick = () => {
-    scheduler();
-    rafIdRef.current = requestAnimationFrame(tick);
+    // 継続ループ
+    timerRef.current = requestAnimationFrame(scheduler);
   };
 
   // ▶ Start
@@ -109,23 +108,31 @@ export default function PlayInner() {
 
     await ctx.resume();
 
-    nextNoteTimeRef.current = ctx.currentTime + 0.05;
+    if (ctx.state !== "running") {
+      console.log("AudioContext not running:", ctx.state);
+      return;
+    }
+
+    // 次の拍を「AudioContext時間」で設定
+    nextNoteTimeRef.current = ctx.currentTime + 0.1;
 
     setIsPlaying(true);
-    rafIdRef.current = requestAnimationFrame(tick);
+
+    // クロック開始
+    timerRef.current = requestAnimationFrame(scheduler);
   };
 
-  // ⏸ Stop
+  // ⏸ Stop（ポーズ）
   const stopMetronome = () => {
-    if (rafIdRef.current) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
+    if (timerRef.current) {
+      cancelAnimationFrame(timerRef.current);
+      timerRef.current = null;
     }
 
     setIsPlaying(false);
   };
 
-  // ■ End
+  // ■ End（完全終了）
   const handleEnd = () => {
     stopMetronome();
 
@@ -189,7 +196,7 @@ export default function PlayInner() {
         <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
-        <h1>Play (RAF Audio Engine)</h1>
+        <h1>Play (AudioContext Clock Engine)</h1>
       </div>
 
       <div style={card}>
@@ -203,7 +210,6 @@ export default function PlayInner() {
             const v = e.target.value;
             setTempoInput(v);
 
-            // 空文字対応（0残り防止）
             if (v === "") {
               setTempo(0);
               tempoRef.current = 0;
@@ -246,7 +252,6 @@ export default function PlayInner() {
       {/* logs */}
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
-
         <table style={table}>
           <tbody>
             {logs.map((log, i) => (
