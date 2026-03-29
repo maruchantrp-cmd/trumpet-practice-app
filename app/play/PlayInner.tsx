@@ -173,6 +173,17 @@ export default function PlayInner() {
   };
 
   // =========================
+  // 🎯 BPM確定ボタン（追加部分）
+  // =========================
+  const confirmTempo = () => {
+    const num = Number(tempoInput);
+    if (!isNaN(num)) {
+      setTempo(num);
+      tempoRef.current = num;
+    }
+  };
+
+  // =========================
   // UI handlers
   // =========================
   const handleEnd = () => {
@@ -256,17 +267,14 @@ export default function PlayInner() {
           type="text"
           inputMode="numeric"
           value={tempoInput}
-          onChange={(e) => {
-            const v = e.target.value;
-            setTempoInput(v);
-
-            const num = Number(v);
-            if (!isNaN(num)) {
-              setTempo(num);
-            }
-          }}
+          onChange={(e) => setTempoInput(e.target.value)}
           style={input}
         />
+
+        {/* 🎯 追加：確定ボタン */}
+        <button onClick={confirmTempo} style={confirmBtn}>
+          🎯 BPMを確定
+        </button>
 
         {/* 🎛 count mode UI */}
         <div style={{ marginTop: 12 }}>
@@ -309,6 +317,7 @@ export default function PlayInner() {
         </button>
       </div>
 
+      {/* logs */}
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
         <table style={table}>
@@ -468,4 +477,16 @@ const hint: React.CSSProperties = {
   fontSize: 12,
   color: "#666",
   marginBottom: 10,
+};
+
+/* =========================
+   added style
+========================= */
+const confirmBtn: React.CSSProperties = {
+  marginTop: 10,
+  width: "100%",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #333",
+  background: "#fff",
 };
