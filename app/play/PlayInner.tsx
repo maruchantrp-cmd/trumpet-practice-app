@@ -29,13 +29,13 @@ export default function PlayInner() {
   // 🎧 AudioContext
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // 次に鳴らす絶対時刻（AudioContext基準）
+  // 次の拍
   const nextNoteTimeRef = useRef<number>(0);
 
-  // ループ制御
-  const timerRef = useRef<number | null>(null);
+  // ループ管理
+  const rafRef = useRef<number | null>(null);
 
-  const scheduleAheadTime = 0.15; // 少し広め（スマホ安定化）
+  const scheduleAheadTime = 0.2;
 
   useEffect(() => {
     tempoRef.current = tempo;
@@ -55,7 +55,16 @@ export default function PlayInner() {
       });
   }, [exerciseId]);
 
-  // 🎵 クリック音
+  // 🔓 iOSアンロック専用（最重要）
+  const unlockAudio = (ctx: AudioContext) => {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  };
+
+  // 🎵 クリック音（最小構成・iOS最適）
   const playClick = (time: number) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
@@ -66,40 +75,35 @@ export default function PlayInner() {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    // ★これが効くことがある（iOS対策）
-    ctx.destination.channelCount = 1;
+    osc.type = "square";
+    osc.frequency.value = 1200;
 
-    osc.frequency.value = 1000;
-
-    // パンチのある短音
-    gain.gain.setValueAtTime(1, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+    // iOS安定用エンベロープ
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(1.0, time + 0.001);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
 
     osc.start(time);
-    osc.stop(time + 0.05);
+    osc.stop(time + 0.06);
   };
 
-  // 🎯 クロック駆動スケジューラ（AudioContext時間基準）
+  // 🎯 スケジューラ（AudioContext時間のみ）
   const scheduler = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
     const secondsPerBeat = 60 / tempoRef.current;
 
-    // 現在時刻 + 少し先までを予約
     while (nextNoteTimeRef.current < ctx.currentTime + scheduleAheadTime) {
       playClick(nextNoteTimeRef.current);
       nextNoteTimeRef.current += secondsPerBeat;
     }
 
-    // 継続ループ
-    timerRef.current = requestAnimationFrame(scheduler);
+    rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  // ▶ Start
+  // ▶ Start（最重要）
   const startMetronome = async () => {
-    if (isPlaying) return;
-
     const AudioContextClass =
       window.AudioContext || (window as any).webkitAudioContext;
 
@@ -109,33 +113,37 @@ export default function PlayInner() {
 
     const ctx = audioCtxRef.current;
 
+    // ★ iOSでは必ずユーザー操作内
     await ctx.resume();
 
+    // 🚨 状態チェック（保険）
     if (ctx.state !== "running") {
       console.log("AudioContext not running:", ctx.state);
       return;
     }
 
-    // 次の拍を「AudioContext時間」で設定
+    // 🔥 最重要：アンロック音（これがないとiOSは黙る）
+    unlockAudio(ctx);
+
+    // 少し先から開始
     nextNoteTimeRef.current = ctx.currentTime + 0.1;
 
     setIsPlaying(true);
 
-    // クロック開始
-    timerRef.current = requestAnimationFrame(scheduler);
+    rafRef.current = requestAnimationFrame(scheduler);
   };
 
-  // ⏸ Stop（ポーズ）
+  // ⏸ Stop
   const stopMetronome = () => {
-    if (timerRef.current) {
-      cancelAnimationFrame(timerRef.current);
-      timerRef.current = null;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
 
     setIsPlaying(false);
   };
 
-  // ■ End（完全終了）
+  // ■ End
   const handleEnd = () => {
     stopMetronome();
 
@@ -199,7 +207,7 @@ export default function PlayInner() {
         <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
-        <h1>Play (AudioContext Clock Engine)</h1>
+        <h1>Play (Final Audio Engine)</h1>
       </div>
 
       <div style={card}>
