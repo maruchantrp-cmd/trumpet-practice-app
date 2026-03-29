@@ -12,10 +12,15 @@ export async function POST(req: Request) {
     const { name, author, themes } = body;
 
     if (!name) {
-      return NextResponse.json({ error: "Book名は必須" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Book名は必須" },
+        { status: 400 }
+      );
     }
 
+    // =========================
     // ① Book作成
+    // =========================
     const { data: book, error: bookError } = await supabase
       .from("books")
       .insert([{ name, author }])
@@ -24,45 +29,69 @@ export async function POST(req: Request) {
 
     if (bookError) throw bookError;
 
-    // ② テーマ＆エクササイズ作成
-    if (themes && themes.length > 0) {
-      for (const theme of themes) {
-        // 👇 空テーマは無視
-        if (!theme.name || theme.exerciseCount <= 0) continue;
+    if (!themes || themes.length === 0) {
+      return NextResponse.json({ success: true });
+    }
 
-        const { data: createdTheme, error: themeError } = await supabase
-          .from("themes")
-          .insert([
-            {
-              book_id: book.id,
-              name: theme.name,
-            },
-          ])
-          .select()
-          .single();
+    // =========================
+    // ② themesを一括フィルタリング
+    // =========================
+    const validThemes = themes.filter(
+      (t: any) => t.name && t.exerciseCount > 0
+    );
 
-        if (themeError) throw themeError;
+    if (validThemes.length === 0) {
+      return NextResponse.json({ success: true });
+    }
 
-        // エクササイズ生成
-        const exercises = [];
-        for (let i = 1; i <= theme.exerciseCount; i++) {
-          exercises.push({
-            theme_id: createdTheme.id,
-            index: i,
-          });
-        }
+    // =========================
+    // ③ themes一括insert
+    // =========================
+    const { data: createdThemes, error: themeError } = await supabase
+      .from("themes")
+      .insert(
+        validThemes.map((t: any) => ({
+          book_id: book.id,
+          name: t.name,
+        }))
+      )
+      .select();
 
-        const { error: exError } = await supabase
-          .from("exercises")
-          .insert(exercises);
+    if (themeError) throw themeError;
 
-        if (exError) throw exError;
+    // =========================
+    // ④ exercisesを一括生成
+    // =========================
+    const exercisesToInsert: any[] = [];
+
+    createdThemes.forEach((theme, idx) => {
+      const original = validThemes[idx];
+
+      for (let i = 1; i <= original.exerciseCount; i++) {
+        exercisesToInsert.push({
+          theme_id: theme.id,
+          index: i,
+        });
       }
+    });
+
+    // =========================
+    // ⑤ exercises一括insert
+    // =========================
+    if (exercisesToInsert.length > 0) {
+      const { error: exError } = await supabase
+        .from("exercises")
+        .insert(exercisesToInsert);
+
+      if (exError) throw exError;
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "server error" },
+      { status: 500 }
+    );
   }
 }
