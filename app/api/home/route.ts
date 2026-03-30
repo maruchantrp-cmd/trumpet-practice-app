@@ -8,64 +8,82 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    // books取得
-    const { data: books, error: bookError } = await supabase
-      .from("books")
-      .select("*");
+    // =========================
+    // ① 全データ一括取得
+    // =========================
+    const [booksRes, themesRes, exercisesRes, logsRes] =
+      await Promise.all([
+        supabase.from("books").select("*"),
+        supabase.from("themes").select("*"),
+        supabase.from("exercises").select("id, theme_id"),
+        supabase
+          .from("exercise_logs")
+          .select("exercise_id")
+          .eq("success", true),
+      ]);
 
-    if (bookError) throw bookError;
+    if (booksRes.error) throw booksRes.error;
+    if (themesRes.error) throw themesRes.error;
+    if (exercisesRes.error) throw exercisesRes.error;
+    if (logsRes.error) throw logsRes.error;
 
-    const result = [];
+    const books = booksRes.data || [];
+    const themes = themesRes.data || [];
+    const exercises = exercisesRes.data || [];
+    const logs = logsRes.data || [];
 
-    for (const book of books) {
-      // themes取得
-      const { data: themes } = await supabase
-        .from("themes")
-        .select("*")
-        .eq("book_id", book.id);
+    // =========================
+    // ② Map化（高速化）
+    // =========================
+
+    // themeId → exercises
+    const exercisesByTheme = new Map<string, string[]>();
+
+    for (const ex of exercises) {
+      if (!exercisesByTheme.has(ex.theme_id)) {
+        exercisesByTheme.set(ex.theme_id, []);
+      }
+      exercisesByTheme.get(ex.theme_id)!.push(ex.id);
+    }
+
+    // 成功済みexerciseセット
+    const clearedSet = new Set(logs.map((l) => l.exercise_id));
+
+    // =========================
+    // ③ 組み立て
+    // =========================
+    const result = books.map((book) => {
+      const bookThemes = themes.filter((t) => t.book_id === book.id);
 
       let bookTotal = 0;
       let bookCleared = 0;
 
-      const themeResults = [];
-
-      for (const theme of themes || []) {
-        // exercises取得
-        const { data: exercises } = await supabase
-          .from("exercises")
-          .select("id")
-          .eq("theme_id", theme.id);
-
-        const exerciseIds = exercises?.map((e) => e.id) || [];
+      const themeResults = bookThemes.map((theme) => {
+        const exerciseIds = exercisesByTheme.get(theme.id) || [];
 
         const total = exerciseIds.length;
 
         let cleared = 0;
-
-        if (exerciseIds.length > 0) {
-          const { data: logs } = await supabase
-            .from("exercise_logs")
-            .select("exercise_id")
-            .in("exercise_id", exerciseIds)
-            .eq("success", true);
-
-          const unique = new Set(logs?.map((l) => l.exercise_id));
-          cleared = unique.size;
+        for (const id of exerciseIds) {
+          if (clearedSet.has(id)) cleared++;
         }
 
         bookTotal += total;
         bookCleared += cleared;
 
-        themeResults.push({
+        return {
           id: theme.id,
           name: theme.name,
           total,
           cleared,
-          percent: total === 0 ? 0 : Math.round((cleared / total) * 100),
-        });
-      }
+          percent:
+            total === 0
+              ? 0
+              : Math.round((cleared / total) * 100),
+        };
+      });
 
-      result.push({
+      return {
         id: book.id,
         name: book.name,
         author: book.author,
@@ -76,14 +94,10 @@ export async function GET() {
             ? 0
             : Math.round((bookCleared / bookTotal) * 100),
         themes: themeResults,
-      });
-    }
-
-    return new Response(JSON.stringify(result), {
-    headers: {
-        "Content-Type": "application/json; charset=utf-8",
-    },
+      };
     });
+
+    return NextResponse.json(result);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "error" }, { status: 500 });
