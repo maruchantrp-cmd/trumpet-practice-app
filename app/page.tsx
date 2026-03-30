@@ -44,7 +44,6 @@ export default function HomePage() {
       >
         <h1>Home</h1>
 
-        {/* 👇 追加ポイント */}
         <button
           onClick={() => router.push("/mybook")}
           style={{
@@ -95,7 +94,9 @@ export default function HomePage() {
               <div
                 key={theme.id}
                 onClick={() =>
-                  router.push(`/exercises?themeId=${theme.id}`)
+                  router.push(
+                    `/exercises?bookId=${book.id}&themeId=${theme.id}`
+                  )
                 }
                 style={{
                   marginBottom: 12,

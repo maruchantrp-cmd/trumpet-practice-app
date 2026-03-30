@@ -25,7 +25,9 @@ export default function ExercisesPage() {
 function ExercisesInner() {
   const params = useSearchParams();
   const router = useRouter();
+
   const themeId = params.get("themeId");
+  const bookId = params.get("bookId");
 
   const [data, setData] = useState<Exercise[]>([]);
   const [selected, setSelected] = useState<Exercise | null>(null);
@@ -33,22 +35,33 @@ function ExercisesInner() {
   const [startTempo, setStartTempo] = useState("");
   const [targetTempo, setTargetTempo] = useState("");
 
+  const [bookName, setBookName] = useState("");
+  const [themeName, setThemeName] = useState(""); // 👈 追加
+
   useEffect(() => {
     if (!themeId) return;
 
-    fetch(`/api/exercises?themeId=${themeId}`, { cache: "no-store" })
+    fetch(`/api/exercises?themeId=${themeId}&bookId=${bookId}`, {
+      cache: "no-store",
+    })
       .then((res) => res.json())
-      .then(setData);
-  }, [themeId]);
+      .then((res) => {
+        setData(res.exercises || res);
+
+        if (res.bookName) setBookName(res.bookName);
+        if (res.themeName) setThemeName(res.themeName); // 👈 追加
+      });
+  }, [themeId, bookId]);
 
   const goHome = () => {
     router.push("/");
   };
 
-  // 👇 修正ポイント
   const handleClick = (ex: Exercise) => {
     if (ex.startTempo && ex.targetTempo) {
-      router.push(`/play?exerciseId=${ex.id}&themeId=${themeId}`);
+      router.push(
+        `/play?exerciseId=${ex.id}&themeId=${themeId}&bookId=${bookId}`
+      );
     } else {
       setStartTempo("");
       setTargetTempo("");
@@ -76,52 +89,81 @@ function ExercisesInner() {
       }),
     });
 
-    router.push(`/play?exerciseId=${selected.id}&themeId=${themeId}`);
+    router.push(
+      `/play?exerciseId=${selected.id}&themeId=${themeId}&bookId=${bookId}`
+    );
   };
 
   return (
     <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
       {/* ===== ヘッダー ===== */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <button style={homeButton} onClick={goHome}>
-          🏠 Home
-        </button>
-        <h1 style={{ margin: 0 }}>エクササイズ一覧</h1>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button style={homeButton} onClick={goHome}>
+            🏠 Home
+          </button>
+          <h1 style={{ margin: 0 }}>エクササイズ一覧</h1>
+        </div>
+
+        {/* 👇 Book + Theme 表示 */}
+        {(bookName || themeName) && (
+          <div style={{ fontSize: 14, color: "#666" }}>
+            📘 {bookName}
+            {themeName && ` / 🎵 ${themeName}`}
+          </div>
+        )}
       </div>
 
       {/* ===== 一覧 ===== */}
-      {data.map((ex) => (
-        <div key={ex.id} onClick={() => handleClick(ex)} style={card}>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <span
-              style={{
-                marginRight: 8,
-                color: ex.isCleared ? "#22c55e" : "#ccc",
-                fontSize: 18,
-              }}
-            >
-              ✔
-            </span>
+      {data.map((ex) => {
+        const percent =
+          ex.targetTempo && ex.targetTempo > 0
+            ? Math.min(
+                100,
+                Math.round((ex.bestTempo / ex.targetTempo) * 100)
+              )
+            : 0;
 
-            <strong>
-              No.{ex.index} {ex.name}
-            </strong>
-          </div>
+        return (
+          <div key={ex.id} onClick={() => handleClick(ex)} style={card}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span
+                style={{
+                  marginRight: 8,
+                  color: ex.isCleared ? "#22c55e" : "#ccc",
+                  fontSize: 18,
+                }}
+              >
+                ✔
+              </span>
 
-          <div style={{ marginTop: 8 }}>
-            {ex.targetTempo ? (
-              <>
-                <ProgressBar percent={ex.percent} />
-                <p style={{ marginTop: 4 }}>
-                  {ex.bestTempo} / {ex.targetTempo}
-                </p>
-              </>
-            ) : (
-              <p style={{ color: "#888" }}>目標未設定</p>
-            )}
+              <strong>
+                No.{ex.index} {ex.name}
+              </strong>
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              {ex.targetTempo ? (
+                <>
+                  <ProgressBar percent={percent} />
+                  <p style={{ marginTop: 4 }}>
+                    {ex.bestTempo} / {ex.targetTempo}
+                  </p>
+                </>
+              ) : (
+                <p style={{ color: "#888" }}>目標未設定</p>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* ===== モーダル ===== */}
       {selected && (
@@ -155,7 +197,6 @@ function ExercisesInner() {
               />
             </div>
 
-            {/* 👇 ボタン改善 */}
             <div style={{ display: "flex", gap: 8 }}>
               <button style={primaryButton} onClick={handleSave}>
                 保存して開始

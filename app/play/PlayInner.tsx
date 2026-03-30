@@ -24,6 +24,14 @@ export default function PlayInner() {
 
   const exerciseId = params.get("exerciseId");
   const themeId = params.get("themeId");
+  const bookId = params.get("bookId"); // 👈 追加
+
+  // =========================
+  // 🎯 表示用（追加）
+  // =========================
+  const [bookName, setBookName] = useState("");
+  const [themeName, setThemeName] = useState("");
+  const [exerciseIndex, setExerciseIndex] = useState<number | null>(null);
 
   // =========================
   // 🎯 tempo state
@@ -81,6 +89,12 @@ export default function PlayInner() {
 
         tempoRef.current = initialTempo;
         setLogs(data.logs || []);
+
+        // 👇 追加
+        if (data.bookName) setBookName(data.bookName);
+        if (data.themeName) setThemeName(data.themeName);
+        if (data.exerciseIndex != null)
+          setExerciseIndex(data.exerciseIndex);
       });
   }, [exerciseId]);
 
@@ -173,7 +187,7 @@ export default function PlayInner() {
   };
 
   // =========================
-  // 🎯 BPM確定ボタン（追加部分）
+  // 🎯 BPM確定ボタン
   // =========================
   const confirmTempo = () => {
     const num = Number(tempoInput);
@@ -226,8 +240,9 @@ export default function PlayInner() {
     setShowConfirm(false);
   };
 
+  // 👇 修正：bookId付きで戻る
   const goExercises = () => {
-    router.push(`/exercises?themeId=${themeId}`);
+    router.push(`/exercises?themeId=${themeId}&bookId=${bookId}`);
   };
 
   const goNext = async () => {
@@ -237,7 +252,9 @@ export default function PlayInner() {
     setShowNextAction(false);
 
     if (data.nextId) {
-      router.push(`/play?exerciseId=${data.nextId}&themeId=${themeId}`);
+      router.push(
+        `/play?exerciseId=${data.nextId}&themeId=${themeId}&bookId=${bookId}`
+      );
     } else {
       goExercises();
     }
@@ -248,13 +265,21 @@ export default function PlayInner() {
   // =========================
   return (
     <div style={{ padding: 24, maxWidth: 500, margin: "0 auto" }}>
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+      {/* ===== ヘッダー ===== */}
+      <div style={{ marginBottom: 12 }}>
         <button onClick={goExercises} style={backButton}>
           ← 戻る
         </button>
 
-        <h1>Play Metronome</h1>
+        {/* 👇 追加：現在地表示 */}
+        <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>
+          {bookName && <>📘 {bookName}</>}
+          {themeName && <> / 🎵 {themeName}</>}
+          {exerciseIndex !== null && <> / No.{exerciseIndex}</>}
+        </div>
       </div>
+
+      <h1>Play Metronome</h1>
 
       <div style={hint}>🔊 iPhoneはサイレントモードも確認</div>
 
@@ -271,12 +296,10 @@ export default function PlayInner() {
           style={input}
         />
 
-        {/* 🎯 追加：確定ボタン */}
         <button onClick={confirmTempo} style={confirmBtn}>
           🎯 BPMを確定
         </button>
 
-        {/* 🎛 count mode UI */}
         <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: 12, marginBottom: 6 }}>カウント</div>
 
@@ -317,7 +340,6 @@ export default function PlayInner() {
         </button>
       </div>
 
-      {/* logs */}
       <div style={{ marginTop: 24 }}>
         <h3>履歴</h3>
         <table style={table}>
@@ -334,7 +356,6 @@ export default function PlayInner() {
         </table>
       </div>
 
-      {/* Modals */}
       {showConfirm && (
         <Modal>
           <h3>うまくできた？</h3>
@@ -368,9 +389,7 @@ export default function PlayInner() {
   );
 }
 
-/**
- * Modal
- */
+/* ===== Modal ===== */
 function Modal({ children }: { children: React.ReactNode }) {
   return (
     <div style={overlay}>
@@ -379,9 +398,8 @@ function Modal({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * styles
- */
+/* ===== styles ===== */
+
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -479,9 +497,6 @@ const hint: React.CSSProperties = {
   marginBottom: 10,
 };
 
-/* =========================
-   added style
-========================= */
 const confirmBtn: React.CSSProperties = {
   marginTop: 10,
   width: "100%",

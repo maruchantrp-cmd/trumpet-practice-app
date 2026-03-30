@@ -19,7 +19,33 @@ export async function GET(req: Request) {
 
   try {
     // =========================
-    // ① exercises（基礎データ）
+    // 🆕 0. theme → book取得
+    // =========================
+    const { data: theme, error: themeError } = await supabase
+      .from("themes")
+      .select("id, name, book_id")
+      .eq("id", themeId)
+      .single();
+
+    if (themeError) throw themeError;
+
+    let bookName = "";
+    let themeName = theme?.name || "";
+
+    if (theme?.book_id) {
+      const { data: book, error: bookError } = await supabase
+        .from("books")
+        .select("name")
+        .eq("id", theme.book_id)
+        .single();
+
+      if (bookError) throw bookError;
+
+      bookName = book?.name || "";
+    }
+
+    // =========================
+    // ① exercises
     // =========================
     const { data: exercises, error: exError } = await supabase
       .from("exercises")
@@ -30,13 +56,17 @@ export async function GET(req: Request) {
     if (exError) throw exError;
 
     if (!exercises || exercises.length === 0) {
-      return NextResponse.json([]);
+      return NextResponse.json({
+        bookName,
+        themeName,
+        exercises: [],
+      });
     }
 
     const exerciseIds = exercises.map((e) => e.id);
 
     // =========================
-    // ② settings（まとめて取得）
+    // ② settings
     // =========================
     const { data: settings, error: settingError } = await supabase
       .from("exercise_settings")
@@ -46,7 +76,6 @@ export async function GET(req: Request) {
 
     if (settingError) throw settingError;
 
-    // 最新だけを残すMap
     const latestSettingMap = new Map<string, any>();
 
     for (const s of settings || []) {
@@ -62,7 +91,7 @@ export async function GET(req: Request) {
     }
 
     // =========================
-    // ③ logs（まとめて取得）
+    // ③ logs
     // =========================
     const { data: logs, error: logError } = await supabase
       .from("exercise_logs")
@@ -81,7 +110,7 @@ export async function GET(req: Request) {
     }
 
     // =========================
-    // ④ 集計処理（メモリ内）
+    // ④ 集計
     // =========================
     const results = exercises.map((ex) => {
       const setting = latestSettingMap.get(ex.id);
@@ -125,7 +154,14 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(results);
+    // =========================
+    // 🆕 最終レスポンス
+    // =========================
+    return NextResponse.json({
+      bookName,
+      themeName,
+      exercises: results,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "error" }, { status: 500 });
